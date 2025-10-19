@@ -46,42 +46,89 @@ class DependencyAnalyzer:
     
     def analyze_dependencies(self, source_files: List[str], header_files: List[str]) -> Dict[str, List[str]]:
         """Analyze dependencies between source files
-        
+
         Args:
             source_files: List of source file paths
             header_files: List of header file paths
-            
+
         Returns:
             Dictionary mapping source files to their dependencies
         """
         dependencies = {}
         header_to_source = self._map_headers_to_sources(source_files, header_files)
-        
+
         for source_file in source_files:
             dependencies[source_file] = []
             includes = self.parse_includes(source_file)
-            
+
             for include in includes:
-                # Check if this is a project header (not a system header)
-                if include in header_to_source:
-                    for dep_source in header_to_source[include]:
-                        if dep_source != source_file and dep_source not in dependencies[source_file]:
-                            dependencies[source_file].append(dep_source)
-        
+                # Resolve the include path to actual header files
+                resolved_headers = self._resolve_include_path(include, source_file, header_files)
+
+                # For each resolved header, find the corresponding source file
+                for resolved_header in resolved_headers:
+                    header_name = os.path.basename(resolved_header)
+                    if header_name in header_to_source:
+                        for dep_source in header_to_source[header_name]:
+                            if dep_source != source_file and dep_source not in dependencies[source_file]:
+                                dependencies[source_file].append(dep_source)
+
         return dependencies
+
+    def _resolve_include_path(self, include_path: str, source_file: str, header_files: List[str]) -> List[str]:
+        """Resolve include path to actual header files
+
+        Args:
+            include_path: Path from #include directive
+            source_file: Path to the source file containing the include
+            header_files: List of all header files in the project
+
+        Returns:
+            List of resolved header file paths
+        """
+        resolved_headers = []
+
+        # If it's an absolute path, check directly
+        if os.path.isabs(include_path):
+            if include_path in header_files:
+                resolved_headers.append(include_path)
+            return resolved_headers
+
+        # Get source file directory
+        source_dir = os.path.dirname(source_file)
+
+        # Try to resolve the include path relative to the source file
+        resolved_path = os.path.normpath(os.path.join(source_dir, include_path))
+
+        # Convert to forward slashes for consistency
+        resolved_path = resolved_path.replace('\\', '/')
+
+        # Check if the resolved path exists in header files
+        for header in header_files:
+            header_normalized = header.replace('\\', '/')
+            if header_normalized == resolved_path or header_normalized.endswith('/' + resolved_path):
+                resolved_headers.append(header)
+
+        # Also check by base name as fallback
+        include_base = os.path.basename(include_path)
+        for header in header_files:
+            if os.path.basename(header) == include_base and header not in resolved_headers:
+                resolved_headers.append(header)
+
+        return resolved_headers
     
     def _map_headers_to_sources(self, source_files: List[str], header_files: List[str]) -> Dict[str, List[str]]:
         """Map header files to their corresponding source files
-        
+
         Args:
             source_files: List of source file paths
             header_files: List of header file paths
-            
+
         Returns:
             Dictionary mapping header file names to source files
         """
         header_to_source = {}
-        
+
         # Create mapping of header base names to their full paths
         header_map = {}
         for header in header_files:
@@ -89,12 +136,21 @@ class DependencyAnalyzer:
             if header_name not in header_map:
                 header_map[header_name] = []
             header_map[header_name].append(header)
-        
+
+        # Create mapping of relative paths to actual header files
+        relative_header_map = {}
+        for header in header_files:
+            # Store the header itself
+            if header not in relative_header_map:
+                relative_header_map[header] = []
+            relative_header_map[header].append(header)
+
         # For each source file, find its corresponding header
         for source in source_files:
             source_base = os.path.basename(source)
             source_name, _ = os.path.splitext(source_base)
-            
+            source_dir = os.path.dirname(source)
+
             # Check for headers with matching name
             for ext in ['.h', '.hpp', '.hh', '.hxx', '.h++']:
                 header_name = source_name + ext
@@ -103,7 +159,7 @@ class DependencyAnalyzer:
                         if header_name not in header_to_source:
                             header_to_source[header_name] = []
                         header_to_source[header_name].append(source)
-        
+
         return header_to_source
     
     def build_dependency_graph(self, source_files: List[str], header_files: List[str]) -> Dict[str, Set[str]]:
