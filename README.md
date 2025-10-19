@@ -29,7 +29,7 @@ pip install cmakegen
 
 ```bash
 # 克隆仓库并安装
-git clone <repository-url>
+git clone https://github.com/Potterluo/cook-copilot.git
 cd cook-copilot
 pip install -e .
 ```
@@ -40,7 +40,7 @@ pip install -e .
 
 ```bash
 # 克隆仓库
-git clone <repository-url>
+git clone https://github.com/Potterluo/cook-copilot.git
 cd cook-copilot
 
 # 构建wheel包
